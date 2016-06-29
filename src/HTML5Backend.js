@@ -285,6 +285,12 @@ export default class HTML5Backend {
         const sourceId = this.monitor.getSourceId();
         const sourceNode = this.sourceNodes[sourceId];
         const dragPreview = this.sourcePreviewNodes[sourceId] || sourceNode;
+
+        if (!dragPreview) {
+          this.actions.endDrag();
+          throw new Error('Missing drag source node, or preview node.');
+        }
+
         const { anchorX, anchorY } = this.getCurrentSourcePreviewNodeOptions();
         const anchorPoint = { anchorX, anchorY };
         const dragPreviewOffset = getDragPreviewOffset(
