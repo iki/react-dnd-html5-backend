@@ -34,6 +34,24 @@ export default class HTML5Backend {
     this.endDragNativeItem = this.endDragNativeItem.bind(this);
   }
 
+  log(msg, data) {
+    const id = data && (data.id2 || data.id) || this.currentDragSourceId;
+
+    console.debug('dnd.html5: ' + msg + (id ? ' [' + id + ']' : ''), Object.assign({
+      id,
+      isDragging: this.monitor.isDragging(),
+      isDraggingNative: this.isDraggingNativeItem(),
+      active: this.currentDragSourceNode,
+      sources: Object.assign({}, this.sourceNodes),
+      previews: Object.assign({}, this.sourcePreviewNodes),
+      dragStartTargetIds: [].concat(this.dragStartTargetIds),
+      dragEnterTargetIds: [].concat(this.dragEnterTargetIds),
+      dragOverTargetIds: [].concat(this.dragOverTargetIds),
+      dropTargetIds: [].concat(this.dropTargetIds),
+      backend: this
+    }, data));
+  }
+
   setup() {
     if (typeof window === 'undefined') {
       return;
@@ -86,10 +104,13 @@ export default class HTML5Backend {
     this.sourcePreviewNodeOptions[sourceId] = options;
     this.sourcePreviewNodes[sourceId] = node;
 
-    return () => {
+    this.log('preview', {id: sourceId, node, options});
+
+    return Object.assign(() => {
+      this.log('preview remove', {id: sourceId, node, options});
       delete this.sourcePreviewNodes[sourceId];
       delete this.sourcePreviewNodeOptions[sourceId];
-    };
+    }, {sourceId});
   }
 
   connectDragSource(sourceId, node, options) {
@@ -103,14 +124,17 @@ export default class HTML5Backend {
     node.addEventListener('dragstart', handleDragStart);
     node.addEventListener('selectstart', handleSelectStart);
 
-    return () => {
+    this.log('source', {id: sourceId, node, options});
+
+    return Object.assign(() => {
+      this.log('source remove', {id: sourceId, node, options});
       delete this.sourceNodes[sourceId];
       delete this.sourceNodeOptions[sourceId];
 
       node.removeEventListener('dragstart', handleDragStart);
       node.removeEventListener('selectstart', handleSelectStart);
       node.setAttribute('draggable', false);
-    };
+    }, {sourceId});
   }
 
   connectDropTarget(targetId, node) {
@@ -205,14 +229,19 @@ export default class HTML5Backend {
       return;
     }
 
+    this.log('active not in dom');
+
     if (this.clearCurrentDragSourceNode()) {
       this.actions.endDrag();
     }
   }
 
-  setCurrentDragSourceNode(node) {
-    this.clearCurrentDragSourceNode();
+  setCurrentDragSourceNode(node, sourceId=this.monitor.getSourceId()) {
+    this.log('active', {id2: sourceId, active2: node});
+
+    this.clearCurrentDragSourceNode(true);
     this.currentDragSourceNode = node;
+    this.currentDragSourceNodeId = sourceId;
     this.currentDragSourceNodeOffset = getNodeClientOffset(node);
     this.currentDragSourceNodeOffsetChanged = false;
 
@@ -222,8 +251,11 @@ export default class HTML5Backend {
     window.addEventListener('mousemove', this.endDragIfSourceWasRemovedFromDOM, true);
   }
 
-  clearCurrentDragSourceNode() {
+  clearCurrentDragSourceNode(skipLog) {
     if (this.currentDragSourceNode) {
+      if (!skipLog) {
+        this.log('active clear');
+      }
       this.currentDragSourceNode = null;
       this.currentDragSourceNodeOffset = null;
       this.currentDragSourceNodeOffsetChanged = false;
@@ -253,15 +285,21 @@ export default class HTML5Backend {
   }
 
   handleTopDragStartCapture() {
+    this.log('top drag start capture');
+
     this.clearCurrentDragSourceNode();
     this.dragStartSourceIds = [];
   }
 
   handleDragStart(e, sourceId) {
+    this.log('drag start', {e, id: sourceId});
+
     this.dragStartSourceIds.unshift(sourceId);
   }
 
   handleTopDragStart(e) {
+    this.log('top drag start', {e});
+
     const { dragStartSourceIds } = this;
     this.dragStartSourceIds = null;
 
@@ -285,6 +323,8 @@ export default class HTML5Backend {
         const sourceId = this.monitor.getSourceId();
         const sourceNode = this.sourceNodes[sourceId];
         const dragPreview = this.sourcePreviewNodes[sourceId] || sourceNode;
+
+        this.log('top drag start: set drag image', {id: sourceId, source: sourceNode, preview: dragPreview});
 
         if (!dragPreview) {
           this.actions.endDrag();
@@ -354,6 +394,8 @@ export default class HTML5Backend {
   }
 
   handleTopDragEndCapture() {
+    this.log('top drag end capture');
+
     if (this.clearCurrentDragSourceNode()) {
       // Firefox can dispatch this event in an infinite loop
       // if dragend handler does something like showing an alert.
@@ -363,9 +405,14 @@ export default class HTML5Backend {
   }
 
   handleTopDragEnterCapture(e) {
+    this.log('top drag enter capture', {e});
+
     this.dragEnterTargetIds = [];
 
     const isFirstEnter = this.enterLeaveCounter.enter(e.target);
+
+    this.log('enter capture', {isFirstEnter});
+
     if (!isFirstEnter || this.monitor.isDragging()) {
       return;
     }
@@ -380,10 +427,14 @@ export default class HTML5Backend {
   }
 
   handleDragEnter(e, targetId) {
+    this.log('drag enter', {e, id: targetId});
+
     this.dragEnterTargetIds.unshift(targetId);
   }
 
   handleTopDragEnter(e) {
+    this.log('top drag enter', {e});
+
     const { dragEnterTargetIds } = this;
     this.dragEnterTargetIds = [];
 
@@ -414,14 +465,20 @@ export default class HTML5Backend {
   }
 
   handleTopDragOverCapture() {
+    // this.log('top drag over capture');
+
     this.dragOverTargetIds = [];
   }
 
   handleDragOver(e, targetId) {
+    // this.log('drag over');
+
     this.dragOverTargetIds.unshift(targetId);
   }
 
   handleTopDragOver(e) {
+    // this.log('top drag over', {e});
+
     const { dragOverTargetIds } = this;
     this.dragOverTargetIds = [];
 
@@ -459,6 +516,8 @@ export default class HTML5Backend {
   }
 
   handleTopDragLeaveCapture(e) {
+    this.log('top drag leave capture', {e});
+
     if (this.isDraggingNativeItem()) {
       e.preventDefault();
     }
@@ -474,6 +533,8 @@ export default class HTML5Backend {
   }
 
   handleTopDropCapture(e) {
+    this.log('top drop capture', {e});
+
     this.dropTargetIds = [];
     e.preventDefault();
 
@@ -485,10 +546,14 @@ export default class HTML5Backend {
   }
 
   handleDrop(e, targetId) {
+    this.log('drop', {e, id: targetId});
+
     this.dropTargetIds.unshift(targetId);
   }
 
   handleTopDrop(e) {
+    this.log('top drop', {e});
+
     const { dropTargetIds } = this;
     this.dropTargetIds = [];
 
@@ -505,6 +570,8 @@ export default class HTML5Backend {
   }
 
   handleSelectStart(e) {
+    this.log('select start', {e});
+
     const { target } = e;
 
     // Only IE requires us to explicitly say
