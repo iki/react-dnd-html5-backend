@@ -6,7 +6,9 @@
   "scripts": {
     "clean": "rimraf lib",
     "build:lib": "babel src --out-dir lib",
+    "watch:lib": "babel src --out-dir lib -w",
     "build:umd": "webpack",
+    "watch:umd": "webpack -w",
     "build": "npm run build:lib && npm run build:umd",
     "lint": "eslint .",
     "test": "mocha --compilers js:babel/register --recursive",
